@@ -1,0 +1,181 @@
+import yaml
+import uuid
+import base64
+import json
+from typing import Dict, Any
+from fastapi import HTTPException
+
+class CitizensConverterService:
+    """Service class for converting Citizens NPC format to other formats"""
+    
+    def convert_to_fancynpcs(self, yaml_content: str) -> str:
+        """
+        Convert Citizens NPC YAML format to FancyNPCs format
+        
+        Args:
+            yaml_content: The Citizens NPC YAML content as string
+            
+        Returns:
+            Converted YAML content in FancyNPCs format
+        """
+        try:
+            data = yaml.safe_load(yaml_content)
+            
+            # Initialize the output structure
+            output_data = {"npcs": {}}
+            
+            # Process each NPC from Citizens format
+            for npc_id, npc_data in data.get('npc', {}).items():
+                converted_npc = self._convert_single_npc(npc_data)
+                new_uuid = str(uuid.uuid4())
+                output_data['npcs'][new_uuid] = converted_npc
+            
+            return yaml.dump(output_data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error processing YAML: {str(e)}")
+    
+    def _convert_single_npc(self, npc_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert a single Citizens NPC to FancyNPCs format"""
+        
+        # Extract basic info
+        name = self._clean_name(npc_data.get('name', 'npc'))
+        traits = npc_data.get('traits', {})
+        
+        # Extract location data
+        location_data = self._extract_location(traits)
+        
+        # Extract creator UUID
+        creator_uuid = self._extract_creator(traits)
+        
+        # Extract and process skin info
+        skin_data = self._extract_skin_data(traits)
+        
+        # Create FancyNPCs format entry
+        fancy_npc = {
+            'name': name,
+            'creator': creator_uuid,
+            'displayName': '<empty>',
+            'type': 'PLAYER',
+            'location': location_data,
+            'showInTab': False,
+            'spawnEntity': True,
+            'collidable': True,
+            'glowing': False,
+            'glowingColor': 'white',
+            'turnToPlayer': True,
+            'turnToPlayerDistance': -1,
+            'interactionCooldown': 0.0,
+            'scale': 1.0,
+            'visibility_distance': 80,
+            'skin': skin_data
+        }
+        
+        # Check lookclose trait for turnToPlayer settings
+        self._apply_lookclose_settings(fancy_npc, traits)
+        
+        # Extract hologram as display name
+        self._apply_hologram_display_name(fancy_npc, traits)
+        
+        # Add default action
+        fancy_npc['actions'] = {
+            'ANY_CLICK': {
+                '1': {
+                    'action': 'player_command',
+                    'value': f'npc {name}'
+                }
+            }
+        }
+        
+        return fancy_npc
+    
+    def _clean_name(self, name: str) -> str:
+        """Clean and format the NPC name"""
+        cleaned = name.replace('&8(&7Rechtsklick&8)', 'npc').replace('&', '')
+        return cleaned.strip() or 'npc'
+    
+    def _extract_location(self, traits: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract location data from traits"""
+        location_trait = traits.get('location', {})
+        return {
+            'world': location_trait.get('world', 'world'),
+            'x': float(location_trait.get('x', 0.0)),
+            'y': float(location_trait.get('y', 80.0)),
+            'z': float(location_trait.get('z', 0.0)),
+            'yaw': float(location_trait.get('yaw', 0.0)),
+            'pitch': float(location_trait.get('pitch', 0.0))
+        }
+    
+    def _extract_creator(self, traits: Dict[str, Any]) -> str:
+        """Extract creator UUID from owner trait"""
+        owner_trait = traits.get('owner', {})
+        return owner_trait.get('uuid', '00000000-0000-0000-0000-000000000000')
+    
+    def _extract_skin_data(self, traits: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract and process skin data from traits"""
+        skin_trait = traits.get('skintrait', {})
+        skin_name = skin_trait.get('skinName', '')
+        texture_raw = skin_trait.get('textureRaw', '')
+        
+        # Default skin data
+        skin_data = {
+            'mirrorSkin': False,
+            'variant': 'AUTO'
+        }
+        
+        # Try to decode texture information
+        skin_url = self._decode_texture_data(texture_raw)
+        if skin_url:
+            skin_data['identifier'] = skin_url['url']
+            skin_data['variant'] = skin_url['variant']
+        elif skin_name and skin_name != 'Unknown':
+            skin_data['identifier'] = skin_name
+        else:
+            skin_data['identifier'] = 'https://textures.minecraft.net/texture/default'
+        
+        return skin_data
+    
+    def _decode_texture_data(self, texture_raw: str) -> Dict[str, str] | None:
+        """Decode base64 texture data and extract skin URL and variant"""
+        if not texture_raw:
+            return None
+        
+        try:
+            # Decode base64 JSON
+            decoded_bytes = base64.b64decode(texture_raw)
+            texture_data = json.loads(decoded_bytes.decode('utf-8'))
+            
+            # Extract skin URL
+            textures = texture_data.get('textures', {})
+            skin_info = textures.get('SKIN', {})
+            skin_url = skin_info.get('url', '')
+            
+            # Extract skin variant (model type)
+            metadata = skin_info.get('metadata', {})
+            model = metadata.get('model', '')
+            variant = 'SLIM' if model == 'slim' else 'AUTO'
+            
+            return {'url': skin_url, 'variant': variant} if skin_url else None
+            
+        except Exception as e:
+            print(f"Error decoding texture data: {e}")
+            return None
+    
+    def _apply_lookclose_settings(self, fancy_npc: Dict[str, Any], traits: Dict[str, Any]) -> None:
+        """Apply lookclose trait settings to the FancyNPC"""
+        lookclose_trait = traits.get('lookclose', {})
+        if lookclose_trait.get('enabled', True):
+            fancy_npc['turnToPlayer'] = True
+            fancy_npc['turnToPlayerDistance'] = int(lookclose_trait.get('range', -1))
+        else:
+            fancy_npc['turnToPlayer'] = False
+    
+    def _apply_hologram_display_name(self, fancy_npc: Dict[str, Any], traits: Dict[str, Any]) -> None:
+        """Extract hologram text and use as display name"""
+        hologram_trait = traits.get('hologramtrait', {})
+        if hologram_trait and 'lines' in hologram_trait:
+            lines = hologram_trait['lines']
+            if '0' in lines and 'text' in lines['0']:
+                hologram_text = lines['0']['text'].replace('&', '').replace('l', '').replace('9', '')
+                if hologram_text.strip():
+                    fancy_npc['displayName'] = hologram_text.strip()

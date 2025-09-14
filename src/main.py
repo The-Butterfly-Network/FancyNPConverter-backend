@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import citizens_converter
 # from routers import znpcs_converter  # TODO: Uncomment when implementing zNPCs
+# from routers import znpcsplus_converter # TODO
 
 app = FastAPI(
     title="NPC Converter API",
@@ -30,6 +31,7 @@ async def root():
         "available_converters": [
             "Citizens NPC → FancyNPCs"
             # "zNPCs → FancyNPCs"  # TODO: Add when implemented
+            # "zNPCsPlus → FancyNPCs" # TODO
         ]
     }
 

@@ -22,6 +22,8 @@ app.add_middleware(
 # Include routers
 app.include_router(citizens_converter.router, prefix="/citizens", tags=["Citizens"])
 # app.include_router(znpcs_converter.router, prefix="/znpcs", tags=["zNPCs"])  # TODO: Uncomment when implementing
+# app.include_router(znpcsplus_converter.router, prefix="/znpcsplus", tags=["zNPCsPlus"])  # TODO: Uncomment when implementing
+
 
 @app.get("/")
 async def root():

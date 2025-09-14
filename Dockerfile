@@ -24,14 +24,14 @@ RUN touch src/__init__.py && \
     touch src/models/__init__.py
 
 # Expose port
-EXPOSE 8000
+EXPOSE 7000
 
 # Set Python path
 ENV PYTHONPATH=/app/src
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:7000/health || exit 1
 
 # Run the application
 CMD ["python", "src/main.py"]
